@@ -1,0 +1,8 @@
+<phpunit bootstrap="tests.php">
+    <testsuites>
+        <testsuite>
+            <file>LinearProgramTest.php</file>
+            <file>DictionaryTest.php</file>
+        </testsuite>
+    </testsuites>
+</phpunit>
