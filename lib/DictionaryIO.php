@@ -1,5 +1,11 @@
 <?php
 
+require_once '../vendor/php-matrix-decompositions/lib/Assertion.php';
+require_once '../vendor/php-matrix-decompositions/lib/Vector.php';
+require_once '../vendor/php-matrix-decompositions/lib/Matrix.php';
+require_once 'Dictionary.php';
+require_once 'LinearProgram.php';
+
 /**
  * Class DIctionaryIO.
  * 
@@ -31,19 +37,29 @@ class DictionaryIO {
      * @return Dictionary
      */
     public static function read($file) {
-        new Assert(file_exists($file), 'File does not exist.');
+        new Assertion(file_exists($file), 'File does not exist.');
         
         $content = file_get_contents($file);
         $lines = explode("\n", $content);
         
         new Assertion(sizeof($lines) >= 6, 'File has to have at least 6 lines.');
         
+        // Remove empty lines:
+        $lines = array_filter($lines, function($line) {
+            $trimmedLine = trim($line);
+            return !empty($trimmedLine);
+        });
+        
+        foreach ($lines as &$line) {
+            $line = preg_replace('#[\t ]+#', ' ', $line);
+        }
+        
         // Check first row (there have to be two integers).
         $m_n = explode(' ', trim($lines[0]));
         new Assertion(sizeof($m_n) == 2, 'First line has to have the format: [Line 1] m n where m and n are integers.');
         
-        $m = $lines[0][0];
-        $n = $lines [0][1];
+        $m = (int) $m_n[0];
+        $n = (int) $m_n [1];
         new Assertion(is_int($m), 'First line has to have two integers.');
         new Assertion(is_int($n), 'First line has to have two integers.');
         
@@ -51,13 +67,34 @@ class DictionaryIO {
         $basic = explode(' ', trim($lines[1]));
         new Assertion(sizeof($basic) == $m, 'Second line has to have m integers.');
         
+        array_map(function($integer) {
+            return (int) $integer;
+        }, $basic);
+        
+        $basicVector = new Vector($m);
+        $basicVector->fromArray($basic);
+        
         // Third line are indices of non-basic variables.
-        $basic = explode(' ', trim($lines[2]));
-        new Assertion(sizeof($basic) == $n, 'Third line has to have m integers.');
+        $nonBasic = explode(' ', trim($lines[2]));
+        new Assertion(sizeof($nonBasic) == $n, 'Third line has to have n integers.');
+        
+        array_map(function($integer) {
+            return (int) $integer;
+        }, $nonBasic);
+        
+        $nonBasicVector = new Vector($n);
+        $nonBasicVector->fromArray($nonBasic);
         
         // Fourth lines stores constraints (b vector).
         $b = explode(' ', trim($lines[3]));
         new Assertion(sizeof($b) == $m, 'Fourth line has to have m floating point numbers.');
+        
+        array_map(function($double) {
+            return (double) $double;
+        }, $b);
+        
+        $bVector = new Vector($m);
+        $bVector->fromArray($b);
         
         // Before grabbing the matrix A, check that enough lines are there.
         new Assertion(sizeof($lines) == $m + 5, 'The file has to have m + 5 lines.');
@@ -70,16 +107,38 @@ class DictionaryIO {
             new Assertion(sizeof($A[$i]) == $n, 'Each row of A has to have n entries.');
         }
         
+        foreach ($A as $id => $array) {
+            foreach ($A[$id] as $id => &$value) {
+                $value = (double) $value;
+            }
+        }
+        
+        $AMatrix = new Matrix($m, $n);
+        $AMatrix->fromArray($A);
+        
         // Last line, has to store obejctive value and objective coefficients.
         $c = explode(' ', trim($lines[$m + 4]));
-        new Assertion(sizeof($c) = $n + 1, 'Last line has to have n + 1 entries.');
+        new Assertion(sizeof($c) == ($n + 1), 'Last line has to have n + 1 entries.');
         
+        array_map(function($double) {
+            return (double) $double;
+        }, $c);
         
+        $c0 = array_shift($c);
+        $cVector = new Vector($n);
+        $cVector->fromArray($c);
+        
+        return new Dictionary($c0, $cVector, $AMatrix, $bVector, $nonBasicVector, $basicVector);
     }
     
+    /**
+     * Write the given dictionary to the given file.
+     * 
+     * @param Dictionary $dictionary
+     * @param string $file
+     */
     public static function write($dictionary, $file) {
         new Assertion($dictionary instanceof Dictionary, 'Given dictionary has to be instance of Dictionary.');
-        new Assert(file_exists($file), 'File does not exist.');
         
         $content = $dictionary->getBasicVariables()->size() . ' ' . $dictionary->getNonBasicVariables()->size() . "\n";
         
@@ -107,9 +166,32 @@ class DictionaryIO {
         
         $content .= $dictionary->getc0() . ' ';
         for ($i = 0; $i < $dictionary->getc()->size(); $i++) {
-            $content .= $dictionary->getc()->get($i);
+            $content .= $dictionary->getc()->get($i) . ' ';
         }
         
         file_put_contents($file, $content);
     }
+}
+
+for ($i = 1; $i <= 5; $i++) {
+    $dictionary = DictionaryIO::read('../data/part' . $i . '.dict');
+    
+    $content = '';
+    if ($dictionary->isFeasible() AND !$dictionary->isUnbounded()) {
+        $entering = $dictionary->identifyEnteringVariable();
+        $leaving = $dictionary->identifyLeavingVariable($entering);
+        $dictionary->performRowOperations($entering, $leaving);
+
+        $content = $dictionary->getLatestEnteringVariable() . "\n";
+        $content .= $dictionary->getLatestLeavingVariable() . "\n";
+        $content .= $dictionary->getc0();
+    }
+    else if ($dictionary->isUnbounded()) {
+        $content = 'UNBOUNDED';
+    }
+    else if (!$dictionary->isFeasible()) {
+        $content = 'INFEASIBLE';
+    }
+
+    file_put_contents('../data/part' . $i . '.test', $content);
 }

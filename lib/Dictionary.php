@@ -61,6 +61,11 @@ class Dictionary {
     private $_nonBasic;
     
     /**
+     * Stores the history of entering/leaving variable analysis.
+     */
+    private $_history;
+    
+    /**
      * Constructs a dictionary from a linear program or by directly
      * defining all ingredients.
      * 
@@ -70,10 +75,11 @@ class Dictionary {
     public function __construct($mixed, $c = NULL, $A = NULL, $b = NULL, $nonBasic = NULL, $basic = NULL) {
         new Assertion($mixed instanceof LinearProgram OR is_numeric($mixed), 'First parameter needs to be an integer or instance of LinearProgram.');
         
-        if ($linearProgram instanceof LinearProgram) {
+        if ($mixed instanceof LinearProgram) {
             new Assertion($mixed instanceof LinearProgram AND $c === NULL AND $A === NULL
                     AND $b === NULL AND $nonBasic === NULL AND $basic === NULL, 'Invalid parameters.');
             
+            $linearProgram = $mixed;
             $this->_A = $linearProgram->getA()->copy();
             $this->_c = $linearProgram->getc()->copy();
             $this->_c0 = 0;
@@ -115,14 +121,16 @@ class Dictionary {
      */
     public function identifyEnteringVariable($rule = Dictionary::BLANDS_RULE) {
         new Assertion($rule === Dictionary::BLANDS_RULE OR $rule === Dictionary::LARGEST_COEFFICIENT_RULE, 'Invalid rule provided.');
+        
         $index = -1;
         $max = 0;
         
         for ($i = 0; $i < $this->_c->size(); $i++) {
             if ($this->_c->get($i) > 0) {
                 if ($rule === Dictionary::BLANDS_RULE) {
-                    new Assertion($this->_nonBasic->get($i) >= 0, 'Could not identify entering variable as dictionary may be final.');
-                    return $this->_nonBasic->get($i);
+                    if ($this->_nonBasic->get($i) < $index || $index < 0) {
+                        $index = $this->_nonBasic->get($i);
+                    }
                 }
                 else if ($rule === Dictionary::LARGEST_COEFFICIENT_RULE) {
                     if ($this->_c->get($i) > $max) {
@@ -147,6 +155,8 @@ class Dictionary {
      * @return int
      */
     public function identifyLeavingVariable($entering, $rule = Dictionary::BLANDS_RULE) {
+        
+        $entering = (int) $entering;
         new Assertion(is_int($entering), 'Entering variable needs to be of type integer.');
         
         // Find index of entering variable.
@@ -156,15 +166,21 @@ class Dictionary {
         $index = -1;
         
         for ($i = 0; $i < $this->_b->size(); $i++) {
-            if ($this->_A->get($i, $enteringIndex) < 0) {
+            
+            new Assertion($this->_b->get($i) >= 0, 'Right hand side has to be greater than zero - possibly infeasible!.');
+            if ($this->_A->get($i, $enteringIndex) < 0 AND $this->_b->get($i) > 0) {
                 
                 // b_i is always positive for feasible dictionary, a_ij is negative.
                 $constraint = $this->_b->get($i) / abs($this->_A->get($i, $enteringIndex));
                 new Assertion($constraint > 0, 'Constraint on increasing entering variable has to be greater than zero.');
                 
-                if ($constraint < $min OR $min < 0) {
-                    $min = $constraint;
-                    $index = $this->_basic->get($i);
+                if ($rule === Dictionary::BLANDS_RULE) {
+                    if ($constraint <= $min OR $min < 0) {
+                        if ($constraint < $min OR ($this->_basic->get($i) < $index OR $index < 0)) {
+                            $min = $constraint;
+                            $index = $this->_basic->get($i);
+                        }
+                    }
                 }
             }
         }
@@ -182,6 +198,12 @@ class Dictionary {
      * @param int leaving
      */
     public function performRowOperations($entering, $leaving) {
+        $entering = (int) $entering;
+        $leaving = (int) $leaving;
+        
+        new Assertion(is_int($entering), 'Entering variable needs to be of type integer.');
+        new Assertion(is_int($leaving), 'Leaving variable needs to be of type integer.');
+        
         $enteringIndex = $this->getNonBasicVariableIndex($entering);
         $leavingIndex = $this->getBasicVariableIndex($leaving);
         
@@ -196,7 +218,7 @@ class Dictionary {
         $a_leaving = new Vector($this->_A->columns());
         $c_entering = $this->_c->get($enteringIndex);
         
-        for ($i = 0; $i < $this->_A->rows(); $i++) {
+        for ($i = 0; $i < $this->_A->columns(); $i++) {
             $a_leaving->set($i, $this->_A->get($leavingIndex, $i));
         }
         
@@ -233,8 +255,6 @@ class Dictionary {
                         $this->_A->set($i, $j, $a_i_entering*($a_leaving->get($j)/(-1.0*$a_leaving_entering)) + $this->_A->get($i, $j));
                     }
                 }
-                
-                
             }
         }
         
@@ -249,10 +269,31 @@ class Dictionary {
         }
         
         // Update objective value c_0.
-        $this->_c0 = $this->_c0 + $c_entering*$b_leaving;
+        $this->_c0 = $this->_c0 + $c_entering*$b_leaving/(-1.0*$a_leaving_entering);
         
         $this->_nonBasic->set($enteringIndex, $leaving);
         $this->_basic->set($leavingIndex, $entering);
+        
+        // Update history;
+        $this->_history[] = array($entering, $leaving);
+    }
+    
+    /**
+     * Get last leaving variable.
+     * 
+     * @return int
+     */
+    public function getLatestEnteringVariable() {
+        return $this->_history[sizeof($this->_history) - 1][0];
+    }
+    
+    /**
+     * Get last leaving variable.
+     * 
+     * @return int
+     */
+    public function getLatestLeavingVariable() {
+        return $this->_history[sizeof($this->_history) - 1][1];
     }
     
     /**
