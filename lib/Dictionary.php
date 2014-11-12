@@ -72,45 +72,20 @@ class Dictionary {
      * @param mixed linear program or objective value
      * 
      */
-    public function __construct($mixed, $c = NULL, $A = NULL, $b = NULL, $nonBasic = NULL, $basic = NULL) {
-        new Assertion($mixed instanceof LinearProgram OR is_numeric($mixed), 'First parameter needs to be an integer or instance of LinearProgram.');
-        
-        if ($mixed instanceof LinearProgram) {
-            new Assertion($mixed instanceof LinearProgram AND $c === NULL AND $A === NULL
-                    AND $b === NULL AND $nonBasic === NULL AND $basic === NULL, 'Invalid parameters.');
+    public function __construct($c0, $c, $A, $b, $nonBasic, $basic) {
+        new Assertion(is_numeric($c0), 'Value c_0 needs to be numeric.');
+        new Assertion($c instanceof Vector, 'c needs to be of type Vector.');
+        new Assertion($A instanceof Matrix, 'A needs to be of type Matrix.');
+        new Assertion($b instanceof Vector, 'b needs to be of type Vector.');
+        new Assertion($nonBasic instanceof Vector, 'Non basic variables need to be of type Vector.');
+        new Assertion($basic instanceof Vector, 'Basic variables need to be of type Vector.');
             
-            $linearProgram = $mixed;
-            $this->_A = $linearProgram->getA()->copy();
-            $this->_c = $linearProgram->getc()->copy();
-            $this->_c0 = 0;
-            $this->_b = $linearProgram->getb()->copy();
-            $this->_nonBasic = new Vector($this->_c->size());
-
-            // Set initial non absic variables.
-            for ($i = 0; $i < $this->_c->size(); $i++) {
-                $this->_nonBasic->set($i, $i + 1);
-            }
-
-            $this->_basic = new Vector($this->_A->rows());
-
-            // Set initial non basic variables.
-            for ($i = 0; $i < $this->_A->rows(); $i++) {
-                $this->_basic->set($i, $this->_c->size() + $i + 1);
-            }
-        }
-        
-        if (is_numeric($mixed)) {
-            new Assertion(is_numeric($mixed) AND $c instanceof Vector AND $A instanceof Matrix
-                    AND $b instanceof Vector AND $nonBasic instanceof Vector
-                    AND $basic instanceof Vector, 'Invalid parameters.');
-            
-            $this->_c0 = $mixed;
-            $this->_c = $c->copy();
-            $this->_A = $A->copy();
-            $this->_b = $b->copy();
-            $this->_nonBasic = $nonBasic->copy();
-            $this->_basic = $basic->copy();
-        }
+        $this->_c0 = $c0;
+        $this->_c = $c->copy();
+        $this->_A = $A->copy();
+        $this->_b = $b->copy();
+        $this->_nonBasic = $nonBasic->copy();
+        $this->_basic = $basic->copy();
     }
     
     /**
@@ -166,13 +141,11 @@ class Dictionary {
         $index = -1;
         
         for ($i = 0; $i < $this->_b->size(); $i++) {
-            
-            new Assertion($this->_b->get($i) >= 0, 'Right hand side has to be greater than zero - possibly infeasible!.');
-            if ($this->_A->get($i, $enteringIndex) < 0 AND $this->_b->get($i) > 0) {
+            if ($this->_A->get($i, $enteringIndex) < 0) {
                 
                 // b_i is always positive for feasible dictionary, a_ij is negative.
                 $constraint = $this->_b->get($i) / abs($this->_A->get($i, $enteringIndex));
-                new Assertion($constraint > 0, 'Constraint on increasing entering variable has to be greater than zero.');
+                //new Assertion($constraint > 0, 'Constraint on increasing entering variable has to be greater than zero.');
                 
                 if ($rule === Dictionary::BLANDS_RULE) {
                     if ($constraint <= $min OR $min < 0) {
@@ -186,6 +159,27 @@ class Dictionary {
         }
         
         new Assertion($index >= 0, 'Could not identify leaving variable as dictionary may be unbounded.');
+        
+        return $index;
+    }
+    
+    /**
+     * Get the "most infeasible" variable for the auxiliary problem.
+     */
+    public function identifyMostInfeasibleVariable() {
+        $index = -1;
+        // There will be a b_i < 0 as the dictionary would be feasible
+        // otherwise.
+        $min = 0;
+        
+        for ($i = 0; $i < $this->_b->size(); $i++) {
+            if ($this->_b->get($i) < $min) {
+                $min = $this->_b->get($i);
+                $index = $this->_basic->get($i);
+            }
+        }
+        
+        new Assertion($index > 0, 'Could not identify most infeasible basic variable - dictionary may be feasible.');
         
         return $index;
     }
@@ -212,8 +206,9 @@ class Dictionary {
         $a_leaving_entering = $this->_A->get($leavingIndex, $enteringIndex);
         $b_leaving = $this->_b->get($leavingIndex);
         
+        new Assertion($a_leaving_entering < 0, 'Entering/leaving coefficient should be less than zero.');
         // All values in b should be equal or greater than zero.
-        new Assertion($b_leaving > 0, 'Vector b should be greater or equal to zero, dictionary may be infeasible.');
+        new Assertion($b_leaving >= 0, 'Vector b should be greater or equal to zero, dictionary may be infeasible.');
         
         $a_leaving = new Vector($this->_A->columns());
         $c_entering = $this->_c->get($enteringIndex);
@@ -225,10 +220,10 @@ class Dictionary {
         // Update b vector.
         for ($i = 0; $i < $this->_b->size(); $i++) {
             if ($i == $leavingIndex) {
-                // b_i does not change.
+                $this->_b->set($i, $b_leaving/(-1.0*$a_leaving_entering));
             }
             else {
-                $this->_b->set($i, $this->_b->get($i) + $this->_A->get($i, $enteringIndex)*$b_leaving);
+                $this->_b->set($i, $this->_b->get($i) + $this->_A->get($i, $enteringIndex)*$b_leaving/(-1.0*$a_leaving_entering));
             }
         }
         
@@ -238,7 +233,7 @@ class Dictionary {
                 // This row needs to be solved for the entering variable.
                 for ($j = 0; $j < $this->_A->columns(); $j++) {
                     if ($j == $enteringIndex) {
-                        $this->_A->set($i, $j, 1.0/$a_leaving_entering);
+                        $this->_A->set($i, $j, 1.0/(1.0*$a_leaving_entering));
                     }
                     else {
                         $this->_A->set($i, $j, $this->_A->get($i, $j)/(-1.0*$a_leaving_entering));
@@ -249,7 +244,7 @@ class Dictionary {
                 $a_i_entering = $this->_A->get($i, $enteringIndex);
                 for ($j = 0; $j < $this->_A->columns(); $j++) {
                     if ($j == $enteringIndex) {
-                       $this->_A->set($i, $enteringIndex, $a_i_entering*(1.0/$a_leaving_entering));
+                       $this->_A->set($i, $j, $a_i_entering*(1.0/(1.0*$a_leaving_entering)));
                     }
                     else {
                         $this->_A->set($i, $j, $a_i_entering*($a_leaving->get($j)/(-1.0*$a_leaving_entering)) + $this->_A->get($i, $j));
@@ -261,7 +256,7 @@ class Dictionary {
         // Update c vector.
         for ($i = 0; $i < $this->_c->size(); $i++) {
             if ($i == $enteringIndex) {
-                $this->_c->set($i, $this->_c->get($i)*(1.0/$a_leaving_entering));
+                $this->_c->set($i, $this->_c->get($i)*(1.0/(1.0*$a_leaving_entering)));
             }
             else {
                 $this->_c->set($i, $c_entering*($a_leaving->get($i)/(-1.0*$a_leaving_entering)) + $this->_c->get($i));
@@ -276,6 +271,175 @@ class Dictionary {
         
         // Update history;
         $this->_history[] = array($entering, $leaving);
+    }
+    
+    /**
+     * Initialize: If the dictionary is not feasible, create the auxiliary 
+     * problem and optimize it.
+     */
+    public function initialize() {
+        $nonBasic = new Vector($this->_nonBasic->size() + 1);
+        
+        // Add helper variable x_0:
+        $nonBasic->set(0, 0);
+        for ($i = 1; $i < $nonBasic->size(); $i++) {
+            $nonBasic->set($i + 1, $this->_nonBasic->get($i));
+        }
+        
+        $A = $this->_A->copy();
+        $A->resize($this->_A->rows(), $this->_A->columns() + 1);
+        for ($i = 0; $i < $this->_A->rows(); $i++) {
+            $A->set($i, $this->_A->size(), 1);
+        }
+        
+        $c = new Vector($this->_nonBasic->size() + 1);
+        $c->set(0, -1);
+        for ($i = 1; $i < $c->size(); $i++) {
+            $c->set($i, 0);
+        }
+        
+        $auxDictionary = new Dictionary(0, $c, $A, $this->_b, $nonBasic, $this->_basic);
+        
+        // Helper variable will be entering
+        $entering = 0;
+        $leaving = $auxDictionary->identifyMostInfeasibleVariable();
+        $auxDictionary->performRowOperations($entering, $leaving);
+        
+        // Now the auxiliary dictionary should be feasible.
+        new Assertion($auxDictionary->isFeasible(), 'Auxiliary problem is not feasible after "magic" pivoting step.');
+        $optValue = $auxDictionary->optimize();
+        
+        $helperVariableColumn = -1;
+        for ($i = 0; $i < $this->_nonBasic->size(); $i++) {
+            if ($this->_nonBasic->get($i)) {
+                $helperVariableColumn = $i;
+            }
+        }
+        
+        if ($optValue == 0 AND $helperVariableColumn >= 0) {
+            // Original problem is feasible; change the dictionary to
+            // the feasible version.
+            
+            // First, udpate the amtrix A:
+            for ($i = 0; $i < $auxDictionary->getA()->rows(); $i++) {
+                for ($j = 0; $j < $auxDictionary->getA()->columns(); $j++) {
+                    if ($j == $helperVariableColumn) {
+                        // Nothing to do here ...
+                    }
+                    else if ($j > $helperVariableColumn) {
+                        $this->_A->set($i, $j - 1, $auxDictionary->getA()->get($i, $j));
+                    }
+                    else {
+                        $this->_A->set($i, $j, $auxDictionary->getA()->get($i, $j));
+                    }
+                }
+            }
+            
+            // Save old non basic variables for updating objective.
+            $oldNonBasic = $this->_nonBasic->copy();
+            
+            // Update non basic variables.
+            for ($i = 0; $i < $auxDictionary->getNonBasicVariables(); $i++) {
+                if ($i == $helperVariableColumn) {
+                    // NOthing to do here ...
+                }
+                else if ($i > $helperVariableColumn) {
+                    $this->_nonBasic->set($i - 1, $auxDictionary->getNonBasicVariables()->get($i));
+                }
+                else {
+                    $this->_nonBasic->set($i, $auxDictionary->getNonBasicVariables()->get($i));
+                }
+            }
+            
+            // Basic variables can simply be copied.
+            for ($i = 0; $i < $auxDictionary->getBasicVariables(); $i++) {
+                $this->_basic->set($i, $auxDictionary->getBasicVariables()->get($i));
+            }
+            
+            // As x_0 is non basic, b can be copied as well.
+            for ($i = 0; $i < $auxDictionary->getb(); $i++) {
+                $this->_b->set($i, $auxDictionary->getb()->get($i));
+            }
+            
+            // Reset obejctive to zero.
+            $this->_c0 = 0;
+            
+            // Updateing the obejct is a bit more complicated; original objective
+            // may include basic variables of the new dictionary.
+            $newC = new Vector($this->_nonBasic->size());
+            $newC->setAll(0);
+            
+            // First, set all non basic variables which are non absic in the old
+            // objective as well.
+            for ($i = 0; $i < $this->_nonBasic->size(); $i++) {
+                
+                $nonBasicIndex = -1;
+                for ($j = 0; $j < $oldNonBasic->size(); $j++) {
+                    if ($oldNonBasic->get($j) == $this->_nonBasic->get($i)) {
+                        $nonBasicIndex = $j;
+                    }
+                }
+                
+                if ($nonBasicIndex >= 0) {
+                    $newC->set($i, $this->_c->get($nonBasicIndex));
+                }
+            }
+            
+            // Now substitute ...
+            for ($i = 0; $i < $this->_c->size(); $i++) {
+                
+                // Check whether the old non basic variable is basic now.
+                $basicIndex = -1;
+                for ($j = 0; $j < $this->_basic->size(); $j++) {
+                    if ($oldNonBasic->get($i) == $this->_basic($j)) {
+                        $basicIndex = $j;
+                    }
+                }
+                
+                if ($basicIndex >= 0) {
+                    $c_index = $this->_c->get($i);
+                    
+                    for ($j = 0; $j < $newC->size(); $j++) {
+                        $newC->set($j, $c_index*$this->_A->get($basicIndex, $j));
+                    }
+                }
+            }
+        }
+        else {
+            // Original problem infeasible.
+            return FALSE;
+        }
+    }
+    
+    /**
+     * Givne a feasible dictionary, it can be optimized until a final
+     * dictionary is detected.
+     */
+    public function optimize() {
+        while (FALSE === $this->isFinal()) {
+            if (!$this->isFeasible()) {
+                return FALSE;
+            }
+            
+            if ($this->isUnbounded()) {
+                return FALSE;
+            }
+            
+            $entering = $this->identifyEnteringVariable();
+            $leaving = $this->identifyLeavingVariable($entering);
+            $this->performRowOperations($entering, $leaving);
+        }
+        
+        return $this->_c0;
+    }
+    
+    /**
+     * Get history.
+     * 
+     * @return array
+     */
+    public function getHistory() {
+        return $this->_history;
     }
     
     /**

@@ -1,11 +1,5 @@
 <?php
 
-require_once '../vendor/php-matrix-decompositions/lib/Assertion.php';
-require_once '../vendor/php-matrix-decompositions/lib/Vector.php';
-require_once '../vendor/php-matrix-decompositions/lib/Matrix.php';
-require_once 'Dictionary.php';
-require_once 'LinearProgram.php';
-
 /**
  * Class DIctionaryIO.
  * 
@@ -171,27 +165,4 @@ class DictionaryIO {
         
         file_put_contents($file, $content);
     }
-}
-
-for ($i = 1; $i <= 5; $i++) {
-    $dictionary = DictionaryIO::read('../data/part' . $i . '.dict');
-    
-    $content = '';
-    if ($dictionary->isFeasible() AND !$dictionary->isUnbounded()) {
-        $entering = $dictionary->identifyEnteringVariable();
-        $leaving = $dictionary->identifyLeavingVariable($entering);
-        $dictionary->performRowOperations($entering, $leaving);
-
-        $content = $dictionary->getLatestEnteringVariable() . "\n";
-        $content .= $dictionary->getLatestLeavingVariable() . "\n";
-        $content .= $dictionary->getc0();
-    }
-    else if ($dictionary->isUnbounded()) {
-        $content = 'UNBOUNDED';
-    }
-    else if (!$dictionary->isFeasible()) {
-        $content = 'INFEASIBLE';
-    }
-
-    file_put_contents('../data/part' . $i . '.test', $content);
 }

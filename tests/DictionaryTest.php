@@ -8,13 +8,7 @@
  */
 class DictionaryTest extends \PHPUnit_Framework_TestCase {
     
-    /**
-     * Helper function to get a LInearProgram from the given arrays which
-     * correspond to c, A and b.
-     * 
-     * @return  LinearProgram
-     */
-    public function linearProgramFromArrays($cData, $AData, $bData) {
+    public function dictionaryFromData($cData, $AData, $bData) {
         $c = new Vector(sizeof($cData));
         $c->fromArray($cData);
         
@@ -24,51 +18,17 @@ class DictionaryTest extends \PHPUnit_Framework_TestCase {
         $b = new Vector(sizeof($bData));
         $b->fromArray($bData);
         
-        return new LinearProgram($c, $A, $b);
-    }
-    
-    /**
-     * Provides data for testing constructor.
-     * 
-     * @return  array   data
-     */
-    public function providerConstruct() {
-        return array(
-            array(
-                // c vector.
-                array(1, 1),
-                // A matrix
-                array(
-                    array(1, 0),
-                    array(0, 1),
-                ),
-                // b vector.
-                array(5, 10),
-            )
-        );
-    }
-    
-    /**
-     * Tests the constructor.
-     * 
-     * @test
-     * @dataProvider providerConstruct
-     * @param   array cData
-     * @param   array AData
-     * @param   array bData
-     */
-    public function testConstruct($cData, $AData, $bData) {
-        $linearProgram = $this->linearProgramFromArrays($cData, $AData, $bData);
+        $nonBasic = new Vector($c->size());
+        for ($i = 0; $i < $nonBasic->size(); $i++) {
+            $nonBasic->set($i, $i + 1);
+        }
         
-        $dictionary = new Dictionary($linearProgram);
+        $basic = new Vector($A->rows());
+        for ($i = 0; $i < $basic->size(); $i++) {
+            $basic->set($i, $nonBasic->size() + $i + 1);
+        }
         
-        $this->assertSame($dictionary->getBasicVariables()->asArray(), array(3, 4));
-        $this->assertSame($dictionary->getNonBasicVariables()->asArray(), array(1, 2));
-        $this->assertSame($dictionary->getc0(), 0);
-        $this->assertSame($dictionary->getc()->size(), $linearProgram->getc()->size());
-        $this->assertSame($dictionary->getA()->rows(), $linearProgram->getA()->rows());
-        $this->assertSame($dictionary->getA()->columns(), $linearProgram->getA()->columns());
-        $this->assertSame($dictionary->getb()->size(), $linearProgram->getb()->size());
+        return new Dictionary(0, $c, $A, $b, $nonBasic, $basic);
     }
     
     /**
@@ -110,8 +70,7 @@ class DictionaryTest extends \PHPUnit_Framework_TestCase {
      * @partam  int   entering
      */
     public function testIdentifyEnteringVariableBland($cData, $AData, $bData, $entering) {
-        $linearProgram = $this->linearProgramFromArrays($cData, $AData, $bData);
-        $dictionary = new Dictionary($linearProgram);
+        $dictionary = $this->dictionaryFromData($cData, $AData, $bData);
         
         $this->assertSame($entering, $dictionary->identifyEnteringVariable());
     }
@@ -155,8 +114,7 @@ class DictionaryTest extends \PHPUnit_Framework_TestCase {
      * @param   int   entering
      */
     public function testIdentifyEnteringVariableLargestCoefficient($cData, $AData, $bData, $entering) {
-        $linearProgram = $this->linearProgramFromArrays($cData, $AData, $bData);
-        $dictionary = new Dictionary($linearProgram);
+        $dictionary = $this->dictionaryFromData($cData, $AData, $bData);
         
         $this->assertSame($entering, $dictionary->identifyEnteringVariable(Dictionary::LARGEST_COEFFICIENT_RULE));
     }
@@ -192,8 +150,7 @@ class DictionaryTest extends \PHPUnit_Framework_TestCase {
      * @param   int   entering
      */
     public function testIdentifyEnteringVariableException($cData, $AData, $bData, $entering) {
-        $linearProgram = $this->linearProgramFromArrays($cData, $AData, $bData);
-        $dictionary = new Dictionary($linearProgram);
+        $dictionary = $this->dictionaryFromData($cData, $AData, $bData);
         
         $this->assertSame($entering, $dictionary->identifyEnteringVariable());
     }
@@ -264,8 +221,7 @@ class DictionaryTest extends \PHPUnit_Framework_TestCase {
      * @param   int   feasible
      */
     public function testIsFeasible($cData, $AData, $bData, $feasible) {
-        $linearProgram = $this->linearProgramFromArrays($cData, $AData, $bData);
-        $dictionary = new Dictionary($linearProgram);
+        $dictionary = $this->dictionaryFromData($cData, $AData, $bData);
         
         $this->assertSame($feasible, $dictionary->isFeasible());
     }
@@ -309,8 +265,7 @@ class DictionaryTest extends \PHPUnit_Framework_TestCase {
      * @param   int   unbounded
      */
     public function testIsUnbounded($cData, $AData, $bData, $unbounded) {
-        $linearProgram = $this->linearProgramFromArrays($cData, $AData, $bData);
-        $dictionary = new Dictionary($linearProgram);
+        $dictionary = $this->dictionaryFromData($cData, $AData, $bData);
         
         $this->assertSame($unbounded, $dictionary->isUnbounded());
     }
@@ -367,8 +322,7 @@ class DictionaryTest extends \PHPUnit_Framework_TestCase {
      * @param   int   leaving
      */
     public function testIdentifyLeavingVariableBland($cData, $AData, $bData, $entering, $leaving) {
-        $linearProgram = $this->linearProgramFromArrays($cData, $AData, $bData);
-        $dictionary = new Dictionary($linearProgram);
+        $dictionary = $this->dictionaryFromData($cData, $AData, $bData);
         
         $this->assertSame($leaving, $dictionary->identifyLeavingVariable($entering));
     }
@@ -414,8 +368,7 @@ class DictionaryTest extends \PHPUnit_Framework_TestCase {
      * @param   int   leaving
      */
     public function testPerformRowOperations($cData, $AData, $bData, $c0, $entering, $leaving, $resultcData, $resultAData, $resultbData, $resultc0) {
-        $linearProgram = $this->linearProgramFromArrays($cData, $AData, $bData);
-        $dictionary = new Dictionary($linearProgram);
+        $dictionary = $this->dictionaryFromData($cData, $AData, $bData);
         
         $this->assertEquals($c0, $dictionary->getc0());
         
@@ -426,5 +379,83 @@ class DictionaryTest extends \PHPUnit_Framework_TestCase {
         $this->assertEquals($resultcData, $dictionary->getc()->asArray());
         $this->assertEquals($resultAData, $dictionary->getA()->asArray());
         $this->assertEquals($resultbData, $dictionary->getb()->asArray());
+    }
+    
+    /**
+     * Tests entering and leaving variable based on provided data.
+     * 
+     * @test
+     */
+    public function testDataEnteringLeaving() {
+        for ($i = 1; $i <= 15; $i++) {
+            $dictionary = DictionaryIO::read('../data/dict' . $i);
+            $content = file_get_contents('../data/dict' . $i . '.output');
+            
+            $lines = explode("\n", $content);
+            
+            $lines = array_map(function($line) {
+                return trim($line);
+            }, $lines);
+            
+            $lines = array_filter($lines, function($line) {
+                return !empty($line);
+            });
+            
+            if ($dictionary->isUnbounded()) {
+                $this->assertEquals(sizeof($lines), 1);
+                $this->assertSame($lines[0], 'UNBOUNDED');
+            }
+            else {
+                $entering = $dictionary->identifyEnteringVariable();
+                $leaving = $dictionary->identifyLeavingVariable($entering);
+                $dictionary->performRowOperations($entering, $leaving);
+                $c0 = $dictionary->getc0();
+                
+                $c0 = round($c0, 1);
+                $testC0 = round($lines[2], 1);
+                
+                $this->assertEquals($entering, $lines[0]);
+                $this->assertEquals($leaving, $lines[1]);
+                $this->assertEquals($c0, $testC0);
+            }
+        }
+    }
+    
+    /**
+     * Tests complete simplex.
+     * 
+     * @test
+     */
+    public function testDataSimplex() {
+        for ($i = 1; $i <= 10; $i++) {
+            $dictionary = DictionaryIO::read('../data/dict' . $i);
+            $content = file_get_contents('../data/dict' . $i . '.solution');
+            
+            $lines = explode("\n", $content);
+            
+            $lines = array_map(function($line) {
+                return trim($line);
+            }, $lines);
+            
+            $lines = array_filter($lines, function($line) {
+                return !empty($line);
+            });
+            
+            $dictionary->optimize();
+            
+            if ($dictionary->isUnbounded()) {
+                $this->assertEquals(sizeof($lines), 1);
+                $this->assertSame($lines[0], 'UNBOUNDED');
+            }
+            else {
+                $c0 = $dictionary->getc0();
+                
+                $c0 = round($c0, 1);
+                $testC0 = round($lines[0], 1);
+                
+                $this->assertEquals(sizeof($lines), 2);
+                $this->assertEquals($c0, $testC0);
+            }
+        }
     }
 }
