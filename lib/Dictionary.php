@@ -191,7 +191,7 @@ class Dictionary {
      * @param int entering
      * @param int leaving
      */
-    public function performRowOperations($entering, $leaving) {
+    public function performRowOperations($entering, $leaving, $aux = FALSE) {
         $entering = (int) $entering;
         $leaving = (int) $leaving;
         
@@ -207,8 +207,16 @@ class Dictionary {
         $b_leaving = $this->_b->get($leavingIndex);
         
         new Assertion($a_leaving_entering < 0, 'Entering/leaving coefficient should be less than zero.');
-        // All values in b should be equal or greater than zero.
-        new Assertion($b_leaving >= 0, 'Vector b should be greater or equal to zero, dictionary may be infeasible.');
+        
+        if ($aux === TRUE) {
+            // When an auxiliary problem is given, the leaving variables has the
+            // most negative value.
+            new Assertion($b_leaving < 0, 'Leaving variable is not negative. Auxiliary problem may not be setup correctly.');
+        }
+        else {
+            // All values in b should be equal or greater than zero.
+            new Assertion($b_leaving >= 0, 'Vector b should be greater or equal to zero, dictionary may be infeasible.');
+        }
         
         $a_leaving = new Vector($this->_A->columns());
         $c_entering = $this->_c->get($enteringIndex);
@@ -273,23 +281,24 @@ class Dictionary {
         $this->_history[] = array($entering, $leaving);
     }
     
-    /**
-     * Initialize: If the dictionary is not feasible, create the auxiliary 
-     * problem and optimize it.
-     */
-    public function initialize() {
+    public function getAuxiliaryDictionary() {
         $nonBasic = new Vector($this->_nonBasic->size() + 1);
         
         // Add helper variable x_0:
         $nonBasic->set(0, 0);
-        for ($i = 1; $i < $nonBasic->size(); $i++) {
+        for ($i = 0; $i < $this->_nonBasic->size(); $i++) {
             $nonBasic->set($i + 1, $this->_nonBasic->get($i));
         }
         
+        // Form new coefficient matrix where the first column has only 1's
+        // correpsonding to the helper variable x_0.
         $A = $this->_A->copy();
         $A->resize($this->_A->rows(), $this->_A->columns() + 1);
         for ($i = 0; $i < $this->_A->rows(); $i++) {
-            $A->set($i, $this->_A->size(), 1);
+            $A->set($i, 0, 1);
+            for ($j = 0; $j < $this->_A->columns(); $j++) {
+                $A->set($i, $j + 1, $this->_A->get($i, $j));
+            }
         }
         
         $c = new Vector($this->_nonBasic->size() + 1);
@@ -298,13 +307,21 @@ class Dictionary {
             $c->set($i, 0);
         }
         
-        $auxDictionary = new Dictionary(0, $c, $A, $this->_b, $nonBasic, $this->_basic);
+        return new Dictionary(0, $c, $A, $this->_b, $nonBasic, $this->_basic);
+    }
+    
+    /**
+     * Initialize: If the dictionary is not feasible, create the auxiliary 
+     * problem and optimize it.
+     */
+    public function initialize() {
+        $auxDictionary = $this->getAuxiliaryDictionary();
         
         // Helper variable will be entering
         $entering = 0;
         $leaving = $auxDictionary->identifyMostInfeasibleVariable();
-        $auxDictionary->performRowOperations($entering, $leaving);
-        
+        $auxDictionary->performRowOperations($entering, $leaving, TRUE);
+        echo $auxDictionary;
         // Now the auxiliary dictionary should be feasible.
         new Assertion($auxDictionary->isFeasible(), 'Auxiliary problem is not feasible after "magic" pivoting step.');
         $optValue = $auxDictionary->optimize();
@@ -404,6 +421,8 @@ class Dictionary {
                     }
                 }
             }
+            
+            return TRUE;
         }
         else {
             // Original problem infeasible.
@@ -595,7 +614,7 @@ class Dictionary {
     /**
      * Get vector of basic variables.
      * 
-     * @return type
+     * @return Vector
      */
     public function getBasicVariables() {
         return $this->_basic;
@@ -604,9 +623,48 @@ class Dictionary {
     /**
      * Get vector of non-basic variables.
      * 
-     * @return type
+     * @return Vector
      */
     public function getNonBasicVariables() {
         return $this->_nonBasic;
+    }
+    
+    /**
+     * toString method for printing.
+     * 
+     * @return string
+     */
+    public function __toString() {
+        $string = $this->_nonBasic->size() . ' ' . $this->_basic->size() . "\n";
+        
+        for ($i = 0; $i < $this->_basic->size(); $i++) {
+            $string .= $this->_basic->get($i) . ' ';
+        }
+        $string .= "\n";
+        
+        for ($i = 0; $i < $this->_nonBasic->size(); $i++) {
+            $string .= $this->_nonBasic->get($i) . ' ';
+        }
+        $string .= "\n";
+        
+        for ($i = 0; $i < $this->_b->size(); $i++) {
+            $string .= $this->_b->get($i) . ' ';
+        }
+        $string .= "\n";
+        
+        for ($i = 0; $i < $this->_A->rows(); $i++) {
+            for ($j = 0; $j < $this->_A->columns(); $j++) {
+                $string .= $this->_A->get($i, $j) . ' ';
+            }
+            $string .= "\n";
+        }
+        
+        $string .= $this->_c0;
+        for ($i = 0; $i < $this->_c->size(); $i++) {
+            $string .= $this->_c->get($i);
+        }
+        $string .= "\n";
+        
+        return $string;
     }
 }

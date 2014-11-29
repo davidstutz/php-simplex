@@ -271,7 +271,7 @@ class DictionaryTest extends \PHPUnit_Framework_TestCase {
     }
     
     /**
-     * Provides data for testing IsUnbounded.
+     * Provides data for testing identifyLeavingVariableBland.
      * 
      * @return  array   data
      */
@@ -328,7 +328,7 @@ class DictionaryTest extends \PHPUnit_Framework_TestCase {
     }
     
     /**
-     * Provides data for testing IsUnbounded.
+     * Provides data for testing performRowOperations
      * 
      * @return  array   data
      */
@@ -440,6 +440,120 @@ class DictionaryTest extends \PHPUnit_Framework_TestCase {
             $lines = array_filter($lines, function($line) {
                 return !empty($line);
             });
+            
+            $dictionary->optimize();
+            
+            if ($dictionary->isUnbounded()) {
+                $this->assertEquals(sizeof($lines), 1);
+                $this->assertSame($lines[0], 'UNBOUNDED');
+            }
+            else {
+                $c0 = $dictionary->getc0();
+                
+                $c0 = round($c0, 1);
+                $testC0 = round($lines[0], 1);
+                
+                $this->assertEquals(sizeof($lines), 2);
+                $this->assertEquals($c0, $testC0);
+            }
+        }
+    }
+    
+    /**
+     * Test dataprovider for testing getAuxiliaryProblem.
+     * 
+     * @return array
+     */
+    public function providerGetAuxiliaryProblem() {
+        return array(
+            array(
+                array(1, 1), // c
+                array( // A
+                    array(1, 0),
+                    array(0, 1),
+                ),
+                array(5, 10), // b
+                array( // A of auxiliary problem
+                    array(1, 1, 0),
+                    array(1, 0, 1),
+                ),
+            ),
+        );
+    }
+    
+    /**
+     * Tests getAuxiliaryProblem.
+     * 
+     * @test
+     * @dataProvider providerGetAuxiliaryProblem
+     * @param   array cData
+     * @param   array AData
+     * @param   array bData
+     * @param
+     */
+    public function testGetAuxiliaryProblem($cData, $AData, $bData, $auxAData) {
+        $dictionary = $this->dictionaryFromData($cData, $AData, $bData);
+        $this->assertSame($dictionary->isFeasible(), FALSE);
+    }
+    
+    /**
+     * Data for testing ProviderIdentifyMostInfeasibleVariable.
+     * 
+     * @return array
+     */
+    public function providerIdentifyMostInfeasibleVariable() {
+        return array(
+            array(
+                array(
+                    
+                ),
+                array(
+                    
+                ),
+                array(
+                    
+                ),
+            )
+        );
+    }
+    
+    /**
+     * Tests identifyMostInfeasibleVariable.
+     * 
+     * @test
+     * @dataProvider providerIdentifyMostInfeasibleVariable
+     * @param   array cData
+     * @param   array AData
+     * @param   array bData
+     * @param
+     */
+    public function testIdentifyMostInfeasibleVariable($cData, $AData, $bData) {
+        
+    }
+    
+    /**
+     * Tests initialization on data.
+     * 
+     * @test
+     */
+    public function testDataInitialization() {
+        for ($i = 16; $i <= 30; $i++) {
+            $dictionary = DictionaryIO::read('../data/dict' . $i);
+            $content = file_get_contents('../data/dict' . $i . '.solution');
+            
+            $lines = explode("\n", $content);
+            
+            $lines = array_map(function($line) {
+                return trim($line);
+            }, $lines);
+            
+            $lines = array_filter($lines, function($line) {
+                return !empty($line);
+            });
+            
+            $this->assertSame($dictionary->isFeasible(), FALSE);
+            $this->assertSame($dictionary->initialize(), TRUE);
+            $this->assertSame($dictionary->isFeasible(), TRUE);
             
             $dictionary->optimize();
             
