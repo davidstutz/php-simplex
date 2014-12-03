@@ -1,5 +1,10 @@
 <?php
 
+include 'Dictionary.php';
+include '../vendor/php-matrix-decompositions/lib/Assertion.php';
+include '../vendor/php-matrix-decompositions/lib/Vector.php';
+include '../vendor/php-matrix-decompositions/lib/Matrix.php';
+
 /**
  * Class DIctionaryIO.
  * 
@@ -165,4 +170,44 @@ class DictionaryIO {
         
         file_put_contents($file, $content);
     }
+}
+
+for ($i = 1; $i <= 10; $i++) {
+    $dictionary = DictionaryIO::read('../data/part' . $i . '.dict');
+    
+    if (!$dictionary->isFeasible()) {
+        if ($dictionary->initialize() === FALSE) {
+            $output = 'INFEASIBLEa';
+        }
+        else {
+            $dictionary->optimize();
+
+            if ($dictionary->isUnbounded()) {
+                $output = 'UNBOUNDED';
+            }
+            else {
+                $output = $dictionary->getc0();
+            }
+        }
+    }
+    elseif ($dictionary->isUnbounded()) {
+        $output = 'UNBOUNDED';
+    }
+    else {
+        $optValue = $dictionary->optimize();
+
+        if ($optValue === FALSE) {
+            if ($dictionary->isUnbounded()) {
+                $output = 'UNBOUNDED';
+            }
+            elseif (!$dictionary->isFeasible()) {
+                $output = 'INFEASIBLE';
+            }
+        }
+        else {
+            $output = $optValue;
+        }
+    }
+    
+    file_put_contents('../data/part' . $i . '.solution', $output);
 }

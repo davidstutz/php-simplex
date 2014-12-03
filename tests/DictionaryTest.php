@@ -467,16 +467,18 @@ class DictionaryTest extends \PHPUnit_Framework_TestCase {
     public function providerGetAuxiliaryProblem() {
         return array(
             array(
-                array(1, 1), // c
+                array(1), //c
                 array( // A
-                    array(1, 0),
-                    array(0, 1),
+                    array(-1),
+                    array(1),
                 ),
-                array(5, 10), // b
-                array( // A of auxiliary problem
-                    array(1, 1, 0),
-                    array(1, 0, 1),
+                array(5, -1), // b
+                array(-1, 0), // aux c
+                array( // aux A
+                    array(1, -1),
+                    array(1, 1),
                 ),
+                array(5, -1), // aux b
             ),
         );
     }
@@ -489,11 +491,22 @@ class DictionaryTest extends \PHPUnit_Framework_TestCase {
      * @param   array cData
      * @param   array AData
      * @param   array bData
+     * @param   array auxcData
+     * @param   array auxAData
+     * @param   array auxbData
      * @param
      */
-    public function testGetAuxiliaryProblem($cData, $AData, $bData, $auxAData) {
+    public function testGetAuxiliaryProblem($cData, $AData, $bData, $auxcData, $auxAData, $auxbData) {
         $dictionary = $this->dictionaryFromData($cData, $AData, $bData);
         $this->assertSame($dictionary->isFeasible(), FALSE);
+        
+        $auxDictionary = $this->dictionaryFromData($auxcData, $auxAData, $auxbData);
+        $this->assertSame($auxDictionary->isFeasible(), FALSE);
+        
+        $genAuxDictionary = $dictionary->getAuxiliaryDictionary();
+        $this->assertSame($genAuxDictionary->getc()->asArray(), $auxDictionary->getc()->asArray());
+        $this->assertSame($genAuxDictionary->getA()->asArray(), $auxDictionary->getA()->asArray());
+        $this->assertSame($genAuxDictionary->getb()->asArray(), $auxDictionary->getb()->asArray());
     }
     
     /**
@@ -504,16 +517,14 @@ class DictionaryTest extends \PHPUnit_Framework_TestCase {
     public function providerIdentifyMostInfeasibleVariable() {
         return array(
             array(
-                array(
-                    
+                array(1), // c
+                array( // A
+                    array(-1),
+                    array(1),
                 ),
-                array(
-                    
-                ),
-                array(
-                    
-                ),
-            )
+                array(5, -1), // b
+                3, // Most infeasible variable.
+            ),
         );
     }
     
@@ -527,8 +538,90 @@ class DictionaryTest extends \PHPUnit_Framework_TestCase {
      * @param   array bData
      * @param
      */
-    public function testIdentifyMostInfeasibleVariable($cData, $AData, $bData) {
+    public function testIdentifyMostInfeasibleVariable($cData, $AData, $bData, $mostInfeasibleVariable) {
+        $dictionary = $this->dictionaryFromData($cData, $AData, $bData);
         
+        $this->assertSame($dictionary->isFeasible(), FALSE);
+        $this->assertSame($dictionary->identifyMostInfeasibleVariable(), $mostInfeasibleVariable);
+    }
+    
+    /**
+     * Data for testing initialization.
+     * 
+     * @return array
+     */
+    public function providerInitialization() {
+        return array(
+            array(
+                array(1), // c
+                array( // A
+                    array(-1),
+                    array(1),
+                ),
+                array(5, -1), // b
+                array(1),
+                array(
+                    array(-1),
+                    array(1),
+                ),
+                array(4, 1),
+                array(2, 1), // basic
+                array(3), // non-basic
+                5,
+            ),
+            array(
+                array(1, 1), // c
+                array( // A
+                    array(1, 0),
+                    array(-1, 0),
+                    array(0, 1),
+                    array(0, -1),
+                    array(-1, -1),
+                ),
+                array(-1, 10, -2, 12 ,16), // b
+                array(1, 1),
+                array(
+                    array(1, 0),
+                    array(0, -1),
+                    array(0, 1),
+                    array(-1 ,0),
+                    array(-1, -1),
+                ),
+                array(2, 9, 1, 10, 13),
+                array(2, 4, 1, 6, 7), // basic
+                array(5, 3), // non-basic
+                16,
+            )
+        );
+    }
+    
+    /**
+     * Tests initialization.
+     * 
+     * @test
+     * @dataProvider providerInitialization
+     * @param   array cData
+     * @param   array AData
+     * @param   array bData
+     * @param   array feasiblecData
+     * @param   array feasibleAData
+     * @param   array feasiblebData
+     * @param
+     */
+    public function testInitialization($cData, $AData, $bData, $auxcData, $auxAData, $auxbData, $basicVariableData, $nonBasicVariableData, $optValue) {
+        $dictionary = $this->dictionaryFromData($cData, $AData, $bData);
+        $initDictionary = $this->dictionaryFromData($auxcData, $auxAData, $auxbData);
+        
+        $this->assertSame($dictionary->initialize(), TRUE);
+        $this->assertEquals($dictionary->getc()->asArray(), $initDictionary->getc()->asArray());
+        $this->assertEquals($dictionary->getA()->asArray(), $initDictionary->getA()->asArray());
+        $this->assertEquals($dictionary->getb()->asArray(), $initDictionary->getb()->asArray());
+        
+        $this->assertEquals($dictionary->getBasicVariables()->asArray(), $basicVariableData);
+        $this->assertEquals($dictionary->getNonBasicVariables()->asArray(), $nonBasicVariableData);
+        
+        $dictionary->optimize();
+        $this->assertEquals($dictionary->getc0(), $optValue);
     }
     
     /**
@@ -552,23 +645,27 @@ class DictionaryTest extends \PHPUnit_Framework_TestCase {
             });
             
             $this->assertSame($dictionary->isFeasible(), FALSE);
-            $this->assertSame($dictionary->initialize(), TRUE);
-            $this->assertSame($dictionary->isFeasible(), TRUE);
-            
-            $dictionary->optimize();
-            
-            if ($dictionary->isUnbounded()) {
+            if ($dictionary->initialize() === FALSE) {
                 $this->assertEquals(sizeof($lines), 1);
-                $this->assertSame($lines[0], 'UNBOUNDED');
+                    $this->assertSame($lines[0], 'INFEASIBLE');
             }
             else {
-                $c0 = $dictionary->getc0();
+                $this->assertSame($dictionary->isFeasible(), TRUE);
+                $dictionary->optimize();
                 
-                $c0 = round($c0, 1);
-                $testC0 = round($lines[0], 1);
-                
-                $this->assertEquals(sizeof($lines), 2);
-                $this->assertEquals($c0, $testC0);
+                if ($dictionary->isUnbounded()) {
+                    $this->assertEquals(sizeof($lines), 1);
+                    $this->assertSame($lines[0], 'UNBOUNDED');
+                }
+                else {
+                    $c0 = $dictionary->getc0();
+
+                    $c0 = round($c0, 1);
+                    $testC0 = round($lines[0], 1);
+
+                    $this->assertEquals(sizeof($lines), 1);
+                    $this->assertEquals($c0, $testC0);
+                }
             }
         }
     }
